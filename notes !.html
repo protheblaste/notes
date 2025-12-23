@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureKeep - Private Notes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        // Tailwind configuration for Dark Mode
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        .note-card:hover .action-buttons { opacity: 1; }
+        .action-buttons { opacity: 0; transition: opacity 0.2s; }
+        .url-highlight { color: #3b82f6; text-decoration: underline; cursor: pointer; position: relative; font-weight: 500; }
+        .code-highlight { background: #fef08a; padding: 2px 6px; border-radius: 4px; font-family: monospace; cursor: pointer; border: 1px solid #facc15; }
+        .dark .code-highlight { background: #854d0e; border-color: #a16207; color: white; }
+        .tooltip { visibility: hidden; position: absolute; top: -35px; left: 0; background: #1e293b; color: white; padding: 4px 8px; border-radius: 6px; font-size: 11px; white-space: nowrap; z-index: 20; }
+        .url-highlight:hover .tooltip { visibility: visible; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 min-h-screen font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+
+    <nav class="bg-white dark:bg-slate-900 border-b dark:border-slate-800 p-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
+        <div class="flex items-center gap-2">
+            <div class="bg-blue-600 p-2 rounded-lg"><i data-lucide="edit-3" class="text-white w-5 h-5"></i></div>
+            <h1 class="text-xl font-bold tracking-tight">SecureKeep</h1>
+        </div>
+        
+        <button onclick="toggleDarkMode()" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <i data-lucide="moon" id="dark-icon-moon" class="w-5 h-5 hidden dark:block text-yellow-400"></i>
+            <i data-lucide="sun" id="dark-icon-sun" class="w-5 h-5 block dark:hidden text-slate-600"></i>
+        </button>
+    </nav>
+
+    <main class="max-w-4xl mx-auto p-6">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-6 mb-8 border border-slate-200 dark:border-slate-800 transition-all focus-within:ring-2 focus-within:ring-blue-500/20">
+            <input type="text" id="note-title" placeholder="Note Title" class="w-full font-bold text-xl outline-none bg-transparent placeholder:text-slate-300 dark:placeholder:text-slate-700 mb-2">
+            
+            <textarea id="note-content" placeholder="Type links (https://...) or codes (123.456.789) here..." class="w-full min-h-[120px] outline-none bg-transparent resize-none text-slate-600 dark:text-slate-400 leading-relaxed"></textarea>
+            
+            <div class="flex flex-wrap gap-4 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 items-center justify-between">
+                <div class="flex gap-2">
+                    <label class="p-2 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer text-slate-500" title="Add Image">
+                        <i data-lucide="image" class="w-5 h-5"></i>
+                        <input type="file" id="image-input" accept="image/*" class="hidden">
+                    </label>
+                    <label class="p-2 hover:bg-blue-50 dark:hover:bg-slate-800 rounded-xl transition cursor-pointer text-slate-500" title="Add Audio">
+                        <i data-lucide="mic" class="w-5 h-5"></i>
+                        <input type="file" id="audio-input" accept="audio/*" class="hidden">
+                    </label>
+                </div>
+                <button onclick="saveNote()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-xl font-bold transition shadow-lg shadow-blue-200 dark:shadow-none">Save Note</button>
+            </div>
+            <div id="preview-area" class="mt-3 flex flex-wrap gap-2"></div>
+        </div>
+
+        <div id="notes-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20"></div>
+    </main>
+
+    <script>
+        let notes = JSON.parse(localStorage.getItem('my_secure_notes')) || [];
+        let tempFiles = [];
+
+        // Check for saved dark mode preference
+        if (localStorage.getItem('dark-mode') === 'true') {
+            document.documentElement.classList.add('dark');
+        }
+
+        lucide.createIcons();
+
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('dark-mode', isDark);
+        }
+
+        // File Handlers
+        document.getElementById('image-input').addEventListener('change', (e) => handleFile(e, 'image'));
+        document.getElementById('audio-input').addEventListener('change', (e) => handleFile(e, 'audio'));
+
+        function handleFile(e, type) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                tempFiles.push({ type: type, data: event.target.result, name: file.name });
+                document.getElementById('preview-area').innerHTML += `<span class="text-[10px] font-bold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-md uppercase tracking-tighter flex items-center gap-1"><i data-lucide="${type === 'image' ? 'image' : 'mic'}" class="w-3 h-3"></i> ${file.name.substring(0,10)}...</span>`;
+                lucide.createIcons();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveNote() {
+            const title = document.getElementById('note-title').value;
+            const content = document.getElementById('note-content').value;
+
+            if (!title && !content) return alert("Empty notes can't be saved!");
+
+            const newNote = {
+                id: Date.now(),
+                title,
+                content,
+                files: [...tempFiles],
+                date: new Date().toLocaleDateString()
+            };
+
+            notes.unshift(newNote);
+            localStorage.setItem('my_secure_notes', JSON.stringify(notes));
+            
+            // Reset
+            document.getElementById('note-title').value = '';
+            document.getElementById('note-content').value = '';
+            document.getElementById('preview-area').innerHTML = '';
+            tempFiles = [];
+            renderNotes();
+        }
+
+        // Highlighting for URLs and Codes
+        function formatContent(text) {
+            const urlRegex = /(https?:\/\/[^\s]+)/g;
+            const codeRegex = /(\w{3}\.\w{3}\.\w{3})/g;
+
+            let formatted = text.replace(urlRegex, (url) => {
+                return `<span class="url-highlight">${url}
+                            <span class="tooltip">
+                                <button onclick="window.open('${url}')" class="font-bold border-r border-slate-600 pr-2 mr-2 hover:text-blue-300">Open</button>
+                                <button onclick="copyToClipboard('${url}')" class="hover:text-blue-300">Copy</button>
+                            </span>
+                        </span>`;
+            });
+
+            formatted = formatted.replace(codeRegex, (code) => {
+                return `<span class="code-highlight" onclick="copyToClipboard('${code}')">${code}</span>`;
+            });
+
+            return formatted;
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text);
+            alert("Copied to clipboard!");
+        }
+
+        function deleteNote(id) {
+            if(confirm("Delete this note?")) {
+                notes = notes.filter(n => n.id !== id);
+                localStorage.setItem('my_secure_notes', JSON.stringify(notes));
+                renderNotes();
+            }
+        }
+
+        function updateNote(id, newContent) {
+            notes = notes.map(n => n.id === id ? {...n, content: newContent} : n);
+            localStorage.setItem('my_secure_notes', JSON.stringify(notes));
+        }
+
+        function renderNotes() {
+            const grid = document.getElementById('notes-grid');
+            grid.innerHTML = '';
+
+            notes.forEach(note => {
+                const noteEl = document.createElement('div');
+                noteEl.className = `bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm note-card flex flex-col group transition-all hover:shadow-lg`;
+                
+                noteEl.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="font-bold text-lg leading-tight">${note.title || 'Untitled'}</h3>
+                        <div class="action-buttons flex gap-2">
+                            <button onclick="deleteNote(${note.id})" class="text-slate-300 hover:text-red-500 transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
+                    </div>
+                    
+                    <div class="text-slate-600 dark:text-slate-400 mb-4 text-sm leading-relaxed">
+                        <div class="mb-2 p-1">${formatContent(note.content)}</div>
+                        <textarea onblur="updateNote(${note.id}, this.value)" placeholder="Edit note..." class="w-full text-xs outline-none bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg resize-none min-h-[60px] border border-transparent focus:border-blue-200 dark:focus:border-blue-900 transition mt-2">Edit mode: click here to type...</textarea>
+                    </div>
+
+                    <div class="space-y-2 mb-4">
+                        ${note.files.map(f => f.type === 'image' ? `<img src="${f.data}" class="w-full max-h-48 object-cover rounded-xl border border-slate-100 dark:border-slate-800">` : `<audio controls src="${f.data}" class="w-full h-8 mt-2"></audio>`).join('')}
+                    </div>
+
+                    <div class="mt-auto pt-4 border-t border-slate-50 dark:border-slate-800 text-[10px] font-bold text-slate-300 dark:text-slate-600 uppercase tracking-widest">
+                        ${note.date}
+                    </div>
+                `;
+                grid.appendChild(noteEl);
+            });
+            lucide.createIcons();
+        }
+
+        renderNotes();
+    </script>
+</body>
+</html>
